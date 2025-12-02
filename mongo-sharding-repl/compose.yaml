@@ -1,0 +1,272 @@
+services:
+  pymongo_api:
+    container_name: pymongo_api
+    platform: linux/amd64
+    build:
+      context: api_app
+      dockerfile: Dockerfile
+    image: kazhem/pymongo_api:1.0.0
+    depends_on:
+      - mongos_router
+    ports:
+      - 8080:8080
+    environment:
+      MONGODB_URL: "mongodb://mongos_router:27020"
+      MONGODB_DATABASE_NAME: "somedb"
+    networks:
+      - app-network
+
+  config_srv:
+    image: mongo:latest
+    container_name: config_srv
+    restart: always
+    networks:
+      - app-network
+    volumes:
+      - config-data:/data/db
+    command:
+      [
+        "--configsvr",
+        "--replSet",
+        "config_server",
+        "--bind_ip_all",
+        "--port",
+        "27017"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  shard1_repl1:
+    image: mongo:latest
+    container_name: shard1_repl1
+    restart: always
+    ports:
+      - "27018:27018"
+    networks:
+      - app-network
+    volumes:
+      - shard1-repl1-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard1",
+        "--bind_ip_all",
+        "--port",
+        "27018"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      start_period: 10s
+
+  shard2_repl1:
+    image: mongo:latest
+    container_name: shard2_repl1
+    restart: always
+    ports:
+      - "27019:27019"
+    networks:
+      - app-network
+    volumes:
+      - shard2-repl1-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard2",
+        "--bind_ip_all",
+        "--port",
+        "27019"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27019", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      start_period: 10s
+
+  shard1_repl2:
+    image: mongo:latest
+    container_name: shard1_repl2
+    restart: always
+    networks:
+      - app-network
+    volumes:
+      - shard1-repl2-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard1",
+        "--bind_ip_all",
+        "--port",
+        "27018"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      start_period: 10s
+
+  shard1_repl3:
+    image: mongo:latest
+    container_name: shard1_repl3
+    restart: always
+    networks:
+      - app-network
+    volumes:
+      - shard1-repl3-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard1",
+        "--bind_ip_all",
+        "--port",
+        "27018"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      start_period: 10s
+
+  shard2_repl2:
+    image: mongo:latest
+    container_name: shard2_repl2
+    restart: always
+    networks:
+      - app-network
+    volumes:
+      - shard2-repl2-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard2",
+        "--bind_ip_all",
+        "--port",
+        "27019"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27019", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      start_period: 10s
+
+  shard2_repl3:
+    image: mongo:latest
+    container_name: shard2_repl3
+    restart: always
+    networks:
+      - app-network
+    volumes:
+      - shard2-repl3-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard2",
+        "--bind_ip_all",
+        "--port",
+        "27019"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27019", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      start_period: 10s
+
+  mongos_router:
+    image: mongo:latest
+    container_name: mongos_router
+    restart: always
+    ports:
+      - "27020:27020"
+    networks:
+      - app-network
+    depends_on:
+      - config_srv
+    command:
+      [
+        "mongos",
+        "--configdb",
+        "config_server/config_srv:27017",
+        "--bind_ip_all",
+        "--port",
+        "27020"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27020", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      start_period: 10s
+
+  mongo-init:
+    image: mongo:latest
+    networks:
+      - app-network
+    command:
+      - bash
+      - -lc
+      - |
+        set -ex
+        wait_host() {
+          host=$$1; port=$$2; tries=$${3:-30};
+          c=0; echo "wait $${host}:$${port}..."
+          until mongosh --host "$$host" --port "$$port" --quiet --eval "db.adminCommand({ping:1})" >/dev/null 2>&1; do
+            c=$$((c+1)); if [ "$$c" -ge "$$tries" ]; then echo "give up waiting $${host}:$${port}"; return 1; fi; sleep 2;
+          done
+          echo "$${host}:$${port} ready"
+        }
+        wait_primary() {
+          host=$$1; port=$$2; tries=$${3:-30};
+          c=0; echo "wait primary $${host}:$${port}..."
+          until mongosh --host "$$host" --port "$$port" --quiet --eval "db.hello().isWritablePrimary" | grep -q "true"; do
+            c=$$((c+1)); if [ "$$c" -ge "$$tries" ]; then echo "give up primary $${host}:$${port}"; return 1; fi; sleep 2;
+          done
+          echo "$${host}:$${port} primary ready"
+        }
+        init_config_rs() {
+          mongosh --host config_srv --port 27017 --eval "try{rs.status()}catch(e){if(e.codeName=='NotYetInitialized'){rs.initiate({_id:'config_server',configsvr:true,members:[{_id:0,host:'config_srv:27017'}]})}else{throw e}}"
+        }
+        init_shard_rs() {
+          name=$$1; port=$$2; primary_host=$$3; secondaries=$$4;
+          members="[{_id:0,host:'$${primary_host}:$${port}'}"
+          idx=1
+          for h in $${secondaries}; do
+            members="$${members},{_id:$${idx},host:'$${h}:$${port}'}"
+            idx=$$((idx+1))
+          done
+          members="$${members}]"
+          mongosh --host "$${primary_host}" --port "$${port}" --eval "try{rs.status()}catch(e){if(e.codeName=='NotYetInitialized'){rs.initiate({_id:'$${name}',members:$${members}})}else{throw e}}"
+        }
+        add_shard_if_missing() {
+          shard_id=$$1; target=$$2;
+          mongosh --host mongos_router --port 27020 --eval "const s=sh.status().shards||[];if(!s.some(x=>x._id=='$$shard_id')){sh.addShard('$$target')}else{print('shard $$shard_id already added')}"
+        }
+        wait_host config_srv 27017 60 || true
+        init_config_rs
+        wait_primary config_srv 27017 60 || true
+        for h in shard1_repl1 shard1_repl2 shard1_repl3; do wait_host $$h 27018 60 || true; done
+        init_shard_rs shard1 27018 shard1_repl1 "shard1_repl2 shard1_repl3"
+        wait_primary shard1_repl1 27018 60 || true
+        for h in shard2_repl1 shard2_repl2 shard2_repl3; do wait_host $$h 27019 60 || true; done
+        init_shard_rs shard2 27019 shard2_repl1 "shard2_repl2 shard2_repl3"
+        wait_primary shard2_repl1 27019 60 || true
+        wait_host mongos_router 27020 60 || true
+        echo "add shards"
+        add_shard_if_missing shard1 shard1/shard1_repl1:27018
+        add_shard_if_missing shard2 shard2/shard2_repl1:27019
+        mongosh --host mongos_router --port 27020 --eval "sh.status()"
+        echo "mongo-init done"
+    restart: on-failure
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  config-data:
+  shard1-repl1-data:
+  shard1-repl2-data:
+  shard1-repl3-data:
+  shard2-repl1-data:
+  shard2-repl2-data:
+  shard2-repl3-data:

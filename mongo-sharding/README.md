@@ -26,15 +26,17 @@ docker compose -f compose.yaml exec mongos_router mongosh --port 27020 --eval "d
 bash mongo-init.sh
 ```
 
-## 5. Зайти на адрес http://localhost:8080 и убедиться, что в helloDoc -> documents_count изменилось значение (по дефолту на 1000)
+## 6. Зайти на адрес http://localhost:8080 и убедиться, что в helloDoc -> documents_count изменилось значение (по дефолту на 1000)
 
 Итог будет выглядеть примерно так
+
 ![](/mongo-sharding/screens/sharding-web.PNG)
 
-## 6. Проверить, что документы распределились по разным шардам
+## 7. Проверить, что документы распределились по разным шардам
 ```shell
 docker compose -f compose.yaml exec mongos_router mongosh --port 27020 --eval "db=db.getSiblingDB('somedb'); db.helloDoc.getShardDistribution();"
 ```
 
 Итог будет выглядеть примерно так
+
 ![](/mongo-sharding/screens/sharding-docs-percent.PNG)
