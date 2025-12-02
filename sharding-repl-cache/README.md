@@ -23,7 +23,7 @@ bash mongo-init.sh
 
 Итог будет выглядеть примерно так
 
-![](/mongo-sharding-repl/screens/repl.PNG)
+![](/sharding-repl-cache/screens/cache.PNG)
 
 Если шарды не подтянулись, может потребоваться пересборка:
 ```shell
