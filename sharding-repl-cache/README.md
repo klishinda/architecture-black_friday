@@ -19,7 +19,7 @@ docker compose -f compose.yaml exec mongos_router mongosh --port 27020 --eval "d
 bash mongo-init.sh
 ```
 
-## 4. Зайти на адрес http://localhost:8080 и убедиться, что у шардов подтянулись реплики
+## 4. Зайти на адрес http://localhost:8080 и убедиться, что параметр cache_enabled установился в true
 
 Итог будет выглядеть примерно так
 

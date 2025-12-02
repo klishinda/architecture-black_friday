@@ -6,12 +6,15 @@ services:
       dockerfile: Dockerfile
     depends_on:
       mongos_router:
+        condition: service_started
+      redis:
         condition: service_healthy
     ports:
       - 8080:8080
     environment:
       MONGODB_URL: "mongodb://mongos_router:27020"
       MONGODB_DATABASE_NAME: "somedb"
+      REDIS_URL: "redis://redis:6379/0"
     networks:
       - app-network
 
@@ -189,6 +192,18 @@ services:
       interval: 5s
       start_period: 10s
 
+  redis:
+    image: redis:7
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      start_period: 5s
+
   mongo-init:
     image: mongo:latest
     networks:
@@ -206,17 +221,19 @@ services:
         wait_host config_srv 27017 60
         init_rs config_srv 27017 "{_id:'config_server',configsvr:true,members:[{_id:0,host:'config_srv:27017'}]}"
 
-        for h in shard1_repl1 shard1_repl2 shard1_repl3; do wait_host $$h 27018 60; done
+        wait_host shard1_repl1 27018 60
+        wait_host shard1_repl2 27018 60
+        wait_host shard1_repl3 27018 60
         init_rs shard1_repl1 27018 "{_id:'shard1',members:[{_id:0,host:'shard1_repl1:27018'},{_id:1,host:'shard1_repl2:27018'},{_id:2,host:'shard1_repl3:27018'}]}"
 
-        for h in shard2_repl1 shard2_repl2 shard2_repl3; do wait_host $$h 27019 60; done
+        wait_host shard2_repl1 27019 60
+        wait_host shard2_repl2 27019 60
+        wait_host shard2_repl3 27019 60
         init_rs shard2_repl1 27019 "{_id:'shard2',members:[{_id:0,host:'shard2_repl1:27019'},{_id:1,host:'shard2_repl2:27019'},{_id:2,host:'shard2_repl3:27019'}]}"
 
         wait_host mongos_router 27020 60
         add_shard shard1 shard1/shard1_repl1:27018,shard1_repl2:27018,shard1_repl3:27018
         add_shard shard2 shard2/shard2_repl1:27019,shard2_repl2:27019,shard2_repl3:27019
-        mongosh --host mongos_router --port 27020 --eval "sh.status()"
-        echo "mongo-init done"
 
 networks:
   app-network:
